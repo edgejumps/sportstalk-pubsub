@@ -14,8 +14,9 @@ var rdb *redis.Client
 
 func init() {
 	rdb = redis.NewClient(&redis.Options{
-		Addr:     "127.0.0.1:6379",
-		Password: "simonwang",
+		Addr:                  "127.0.0.1:6379",
+		Password:              "simonwang",
+		ContextTimeoutEnabled: true,
 	})
 
 	err := rdb.Ping(context.Background()).Err()
@@ -26,7 +27,7 @@ func init() {
 }
 
 func TestRedisStream(t *testing.T) {
-	ps := NewPubSubStream(rdb, nil)
+	ps := NewPubSubStream(rdb, "")
 
 	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
 
@@ -40,7 +41,7 @@ func TestRedisStream(t *testing.T) {
 		t.Errorf("Error publishing message: %v", err)
 	}
 
-	events, err := ps.Subscribe(context.Background(), TargetTopic{
+	err = ps.Subscribe(TargetTopic{
 		Key: "data-case-test",
 	})
 
@@ -48,7 +49,7 @@ func TestRedisStream(t *testing.T) {
 		t.Errorf("Error subscribing: %v", err)
 	}
 
-	for e := range events {
+	for e := range ps.Events() {
 
 		data, err := e.Data()
 
@@ -76,6 +77,7 @@ func TestRedisStream(t *testing.T) {
 		}
 	}
 
+	ps.Stop()
 }
 
 func TestRedisPubSub(t *testing.T) {
@@ -89,7 +91,7 @@ func TestRedisPubSub(t *testing.T) {
 
 		defer wg.Done()
 
-		events, err := ps.Subscribe(context.Background(), TargetTopic{
+		err := ps.Subscribe(TargetTopic{
 			Key: "pubsub-key",
 		})
 
@@ -97,7 +99,7 @@ func TestRedisPubSub(t *testing.T) {
 			t.Errorf("Error subscribing: %v", err)
 		}
 
-		for e := range events {
+		for e := range ps.Events() {
 			data, err := e.Data()
 
 			if err != nil {
@@ -135,4 +137,69 @@ func TestRedisPubSub(t *testing.T) {
 		t.Errorf("Error publishing message: %v", err)
 	}
 	wg.Wait()
+	ps.Stop()
+}
+
+func TestStreamPubSub_MultipleTopics(t *testing.T) {
+	ps := NewPubSubStream(rdb, "")
+
+	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
+
+	event := NewOutgoingEvent(&EventID{
+		Topic: "data-case-test",
+	}, action, 0, customStruct)
+
+	err := ps.Publish(context.Background(), event)
+
+	if err != nil {
+		t.Errorf("Error publishing message: %v", err)
+	}
+
+	err = ps.Subscribe(TargetTopic{
+		Key: "data-case-test-2",
+	})
+
+	if err != nil {
+		t.Errorf("Error subscribing: %v", err)
+	}
+
+	err = ps.Subscribe(TargetTopic{
+		Key: "data-case-test",
+	})
+
+	if err != nil {
+		t.Errorf("Error subscribing: %v", err)
+	}
+
+	for e := range ps.Events() {
+
+		data, err := e.Data()
+
+		if err != nil {
+			continue
+		}
+
+		fmt.Printf("Received event: %v\n", e.ID().Topic)
+
+		if data.Action() == action {
+
+			s := &CustomStruct{}
+
+			err := data.UnmarshalPayload(s)
+
+			if err != nil {
+				t.Errorf("Error deserialize EventData: %v", err)
+			}
+
+			err = compareStruct(s)
+
+			if err != nil {
+				t.Errorf("Error comparing received data: %v", err)
+			}
+
+			break
+		}
+	}
+
+	ps.Stop()
 }

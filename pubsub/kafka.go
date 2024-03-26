@@ -12,10 +12,18 @@ func (ps *kafkaPubSub) Publish(ctx context.Context, event Event) error {
 	return nil
 }
 
-func (ps *kafkaPubSub) Subscribe(context.Context, ...TargetTopic) (<-chan Event, error) {
-	return nil, nil
+func (ps *kafkaPubSub) Subscribe(...TargetTopic) error {
+	return nil
 }
 
-func (ps *kafkaPubSub) DumpSyncPoint(path string) error {
+func (ps *kafkaPubSub) Events() <-chan Event {
+	return nil
+}
+
+func (ps *kafkaPubSub) Errors() <-chan error {
+	return nil
+}
+
+func (ps *kafkaPubSub) Stop() error {
 	return nil
 }

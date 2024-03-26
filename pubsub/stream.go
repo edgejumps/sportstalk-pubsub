@@ -3,52 +3,48 @@ package pubsub
 import (
 	"context"
 	"errors"
-	"github.com/edgejumps/sportstalk-common-utils/logger"
+	"fmt"
 	"github.com/redis/go-redis/v9"
 	"sync"
-	"time"
 )
 
 var (
-	ErrNoEntryID         = errors.New("no entry id")
-	ErrAlreadySubscribed = errors.New("already subscribed")
+	ErrNoEntryID = errors.New("no entry id")
 )
 
 type pubSubStreamImpl struct {
 	client *redis.Client
 
-	working bool
+	eventChan chan Event
 
-	mu *sync.Mutex
+	topics map[string]TargetTopic
 
+	mu    *sync.Mutex
 	point *SyncPoint
+
+	pointPath string
+
+	worker Worker
 }
 
-func NewPubSubStream(c *redis.Client, point *SyncPoint) UnifiedPubSub {
+func NewPubSubStream(c *redis.Client, pointPath string) UnifiedPubSub {
 
-	if point == nil {
+	point, err := LoadSyncPoint(pointPath)
+
+	if err != nil {
 		point = &SyncPoint{
 			Offsets: make(map[string]string),
 		}
 	}
 
 	return &pubSubStreamImpl{
-		client: c,
-		point:  point,
-		mu:     &sync.Mutex{},
+		client:    c,
+		point:     point,
+		pointPath: pointPath,
+		eventChan: make(chan Event),
+		topics:    make(map[string]TargetTopic),
+		mu:        &sync.Mutex{},
 	}
-}
-
-func NewPubSubStreamWithSyncPoint(c *redis.Client, path string) UnifiedPubSub {
-
-	point, err := LoadSyncPoint(path)
-
-	if err != nil {
-		logger.Error("Error loading sync point: ", err)
-		return NewPubSubStream(c, nil)
-	}
-
-	return NewPubSubStream(c, point)
 }
 
 // Publish publishes a message to a topic
@@ -74,7 +70,7 @@ func (ps *pubSubStreamImpl) Publish(context context.Context, event Event) error 
 		return err
 	}
 
-	count, err := ps.client.XAdd(context, &redis.XAddArgs{
+	entryID, err := ps.client.XAdd(context, &redis.XAddArgs{
 		Stream:     id.Topic,
 		NoMkStream: true,
 		Approx:     true,
@@ -86,95 +82,96 @@ func (ps *pubSubStreamImpl) Publish(context context.Context, event Event) error 
 		return err
 	}
 
-	if count == "" {
+	if entryID == "" {
 		return ErrNoEntryID
 	}
 
 	return nil
 }
 
-func (ps *pubSubStreamImpl) Subscribe(context context.Context, topics ...TargetTopic) (<-chan Event, error) {
+func (ps *pubSubStreamImpl) Subscribe(topics ...TargetTopic) error {
 
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	if ps.working {
-		return nil, ErrAlreadySubscribed
+	if ps.worker != nil {
+		oldWorker := ps.worker
+		ps.point.Merge(oldWorker.Stop())
+		ps.worker = nil
 	}
 
-	msgs := make(chan Event)
+	for _, topic := range topics {
+		ps.topics[topic.Key] = topic
+	}
 
-	go ps.listen(context, msgs, topics...)
+	ps.worker = NewStreamWorker(ps.client)
 
-	ps.working = true
+	return ps.worker.Run(ps.collectTopics(), ps.eventChan)
 
-	return msgs, nil
 }
 
-func (ps *pubSubStreamImpl) listen(context context.Context, receiver chan<- Event, topics ...TargetTopic) {
+func (ps *pubSubStreamImpl) Events() <-chan Event {
+	return ps.eventChan
+}
+
+func (ps *pubSubStreamImpl) Errors() <-chan error {
+	return nil
+}
+
+func (ps *pubSubStreamImpl) Topics() []TargetTopic {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	topics := make([]TargetTopic, 0)
+
+	for _, topic := range ps.topics {
+		topics = append(topics, topic)
+	}
+
+	return topics
+}
+
+func (ps *pubSubStreamImpl) Stop() error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	if ps.worker == nil {
+		return nil
+	}
+
 	defer func() {
-		close(receiver)
-		ps.working = false
-		logger.Info("pubsub stream closed")
+		ps.worker = nil
+		close(ps.eventChan)
 	}()
 
-	for {
+	fmt.Printf("Stopping StreamPubSub: %v\n", ps.worker)
 
-		streams := make([]string, 0)
+	ps.point.Merge(ps.worker.Stop())
 
-		for _, topic := range topics {
-
-			v, ok := ps.point.Offsets[topic.Key]
-
-			if !ok {
-				v = string(MinimumID)
-			}
-
-			streams = append(streams, topic.Key, v)
-		}
-
-		select {
-		case <-context.Done():
-			return
-		default:
-			streams, err := ps.client.XRead(context, &redis.XReadArgs{
-				Streams: streams,
-			}).Result()
-
-			if err != nil {
-				return
-			}
-
-			for _, stream := range streams {
-				for _, msg := range stream.Messages {
-
-					timestamp := ParseTimestamp(msg.Values[EventTimestampKey])
-
-					// if timestamp is less than or equal to the last read timestamp, skip
-					if timestamp <= ps.point.Timestamp {
-						continue
-					}
-
-					event := NewIncomingEvent(&EventID{
-						Topic:   stream.Stream,
-						EntryID: msg.ID,
-					}, msg.Values)
-
-					receiver <- event
-					//ps.point.Timestamp = max(ps.point.Timestamp, timestamp)
-				}
-
-				if len(stream.Messages) > 0 {
-					ps.point.Offsets[stream.Stream] = stream.Messages[len(stream.Messages)-1].ID
-				}
-			}
-		}
+	if ps.pointPath == "" {
+		return nil
 	}
+
+	return DumpSyncPoint(ps.pointPath, ps.point)
 }
 
-func (ps *pubSubStreamImpl) DumpSyncPoint(path string) error {
+// collectTopics collects the topics and their last read offset.
+// it would return a slice of strings where the first half is the topics
+// and the second half is the last read offset for each topic.
+func (ps *pubSubStreamImpl) collectTopics() []string {
+	topics := make([]string, 0)
+	ids := make([]string, 0)
 
-	ps.point.Timestamp = time.Now().UnixMilli()
+	for _, topic := range ps.topics {
+		v, ok := ps.point.Offsets[topic.Key]
 
-	return DumpSyncPoint(path, ps.point)
+		if !ok {
+			v = string(MinimumID)
+		}
+
+		topics = append(topics, topic.Key)
+		ids = append(ids, v)
+	}
+
+	return append(topics, ids...)
 }

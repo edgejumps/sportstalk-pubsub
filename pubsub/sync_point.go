@@ -14,6 +14,12 @@ type SyncPoint struct {
 	Offsets map[string]string `json:"offsets"`
 }
 
+func (s *SyncPoint) Merge(other SyncPoint) {
+	for k, v := range other.Offsets {
+		s.Offsets[k] = v
+	}
+}
+
 func DumpSyncPoint(path string, point *SyncPoint) error {
 
 	err := fileloader.WriteInto(point, path, true)

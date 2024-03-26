@@ -29,18 +29,29 @@ var (
 	ErrUnsupportedNormalizeTarget = errors.New("unsupported normalize target")
 )
 
+// todo: enable unsubscribe
 type UnifiedPubSub interface {
 
 	// Publish publishes a message to a topic
 	// If message is map[string]interface{}, its value must be string, int, float64, bool, []byte, or nil.
 	Publish(ctx context.Context, event Event) error
 
-	// Subscribe subscribes to given topics
-	Subscribe(ctx context.Context, topics ...TargetTopic) (<-chan Event, error)
+	// Subscribe subscribes to given topics.
+	// The receiver can get all incoming events from the Events() channel.
+	Subscribe(topics ...TargetTopic) error
 
-	// DumpSyncPoint dumps the current sync point to the specified path,
-	// so it can be restored later.
-	DumpSyncPoint(path string) error
+	// Events returns a channel that receives all incoming events.
+	// As long as the internal worker is running, the channel will keep receiving events.
+	// The event channel will be closed when Stop() is called.
+	Events() <-chan Event
+
+	// Errors returns a channel that receives all errors that occur during the subscription.
+	// It is typically designed for Kafka-based pub/sub.
+	Errors() <-chan error
+
+	Topics() []TargetTopic
+
+	Stop() error
 }
 
 type TargetTopic struct {

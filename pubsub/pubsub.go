@@ -2,22 +2,32 @@ package pubsub
 
 import (
 	"context"
-	"github.com/edgejumps/sportstalk-common-utils/logger"
 	"github.com/redis/go-redis/v9"
 	"sync"
 )
 
+// Since Redis PUBSUB would not be able to persistent messages,
+// so we would create a new worker for newly added topics when calling Subscribe,
+// instead of using the same worker for all topics.
 type pubSubImpl struct {
 	client *redis.Client
 
-	working bool
-	mu      *sync.Mutex
+	eventChan chan Event
+
+	topics map[string]TargetTopic
+
+	workers []Worker
+
+	mu *sync.Mutex
 }
 
 func NewPubSub(c *redis.Client) UnifiedPubSub {
 	return &pubSubImpl{
-		client: c,
-		mu:     &sync.Mutex{},
+		client:    c,
+		eventChan: make(chan Event),
+		topics:    make(map[string]TargetTopic),
+		workers:   make([]Worker, 0),
+		mu:        &sync.Mutex{},
 	}
 }
 
@@ -50,62 +60,68 @@ func (ps *pubSubImpl) Publish(context context.Context, event Event) error {
 	return nil
 }
 
-func (ps *pubSubImpl) Subscribe(context context.Context, topics ...TargetTopic) (<-chan Event, error) {
+func (ps *pubSubImpl) Subscribe(topics ...TargetTopic) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	if ps.working {
-		return nil, ErrAlreadySubscribed
+	newTopics := make([]string, 0)
+
+	for _, topic := range topics {
+
+		if _, ok := ps.topics[topic.Key]; !ok {
+			newTopics = append(newTopics, topic.Key)
+		}
+
+		ps.topics[topic.Key] = topic
 	}
 
-	targets := make([]string, len(topics))
-
-	for i, t := range topics {
-		targets[i] = t.Key
+	if len(newTopics) == 0 {
+		return nil
 	}
 
-	sub := ps.client.Subscribe(context, targets...)
+	worker := NewWorker(ps.client)
+	ps.workers = append(ps.workers, worker)
 
-	_, err := sub.Receive(context)
-
-	if err != nil {
-		return nil, err
-	}
-
-	msgs := make(chan Event)
-
-	go ps.listen(context, sub, msgs)
-
-	ps.working = true
-
-	return msgs, nil
+	return worker.Run(newTopics, ps.eventChan)
 }
 
-func (ps *pubSubImpl) DumpSyncPoint(path string) error {
+func (ps *pubSubImpl) Events() <-chan Event {
+	return ps.eventChan
+}
+
+func (ps *pubSubImpl) Errors() <-chan error {
 	return nil
 }
 
-func (ps *pubSubImpl) listen(ctx context.Context, pubsub *redis.PubSub, receiver chan<- Event) {
+func (ps *pubSubImpl) Topics() []TargetTopic {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	topics := make([]TargetTopic, 0)
+
+	for _, topic := range ps.topics {
+		topics = append(topics, topic)
+	}
+
+	return topics
+}
+
+func (ps *pubSubImpl) Stop() error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	if len(ps.workers) == 0 {
+		return nil
+	}
+
 	defer func() {
-		pubsub.Close()
-		close(receiver)
-		ps.working = false
-		logger.Info("pubsub closed")
+		ps.workers = make([]Worker, 0)
+		close(ps.eventChan)
 	}()
 
-	ch := pubsub.Channel()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg := <-ch:
-
-			event := NewIncomingEvent(&EventID{
-				Topic: msg.Channel,
-			}, msg.Payload)
-
-			receiver <- event
-		}
+	for _, worker := range ps.workers {
+		worker.Stop()
 	}
+
+	return nil
 }
