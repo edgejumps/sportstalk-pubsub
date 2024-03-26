@@ -27,3 +27,7 @@ func (ps *kafkaPubSub) Errors() <-chan error {
 func (ps *kafkaPubSub) Stop() error {
 	return nil
 }
+
+func (ps *kafkaPubSub) Topics() []TargetTopic {
+	return nil
+}

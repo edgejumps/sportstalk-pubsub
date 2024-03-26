@@ -14,9 +14,9 @@ var rdb *redis.Client
 
 func init() {
 	rdb = redis.NewClient(&redis.Options{
-		Addr:                  "127.0.0.1:6379",
-		Password:              "simonwang",
-		ContextTimeoutEnabled: true,
+		Addr:     "127.0.0.1:6379",
+		Password: "simonwang",
+		//ContextTimeoutEnabled: true,
 	})
 
 	err := rdb.Ping(context.Background()).Err()
