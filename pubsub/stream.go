@@ -17,7 +17,7 @@ type pubSubStreamImpl struct {
 
 	eventChan chan Event
 
-	topics map[string]TargetTopic
+	topics map[string]Topic
 
 	mu    *sync.Mutex
 	point *SyncPoint
@@ -42,7 +42,7 @@ func NewPubSubStream(c *redis.Client, pointPath string) UnifiedPubSub {
 		point:     point,
 		pointPath: pointPath,
 		eventChan: make(chan Event),
-		topics:    make(map[string]TargetTopic),
+		topics:    make(map[string]Topic),
 		mu:        &sync.Mutex{},
 	}
 }
@@ -89,7 +89,7 @@ func (ps *pubSubStreamImpl) Publish(context context.Context, event Event) error 
 	return nil
 }
 
-func (ps *pubSubStreamImpl) Subscribe(topics ...TargetTopic) error {
+func (ps *pubSubStreamImpl) Subscribe(topics ...Topic) error {
 
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -101,7 +101,13 @@ func (ps *pubSubStreamImpl) Subscribe(topics ...TargetTopic) error {
 	}
 
 	for _, topic := range topics {
-		ps.topics[topic.Key] = topic
+
+		name := topic.Name()
+		ps.topics[name] = topic
+
+		if _, ok := ps.point.Offsets[name]; !ok {
+			ps.point.Offsets[name] = topic.Offset()
+		}
 	}
 
 	ps.worker = NewStreamWorker(ps.client)
@@ -118,14 +124,14 @@ func (ps *pubSubStreamImpl) Errors() <-chan error {
 	return nil
 }
 
-func (ps *pubSubStreamImpl) Topics() []TargetTopic {
+func (ps *pubSubStreamImpl) Topics() []string {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	topics := make([]TargetTopic, 0)
+	topics := make([]string, 0)
 
 	for _, topic := range ps.topics {
-		topics = append(topics, topic)
+		topics = append(topics, topic.Name())
 	}
 
 	return topics
@@ -163,13 +169,13 @@ func (ps *pubSubStreamImpl) collectTopics() []string {
 	ids := make([]string, 0)
 
 	for _, topic := range ps.topics {
-		v, ok := ps.point.Offsets[topic.Key]
+		v, ok := ps.point.Offsets[topic.Name()]
 
 		if !ok {
 			v = string(MinimumID)
 		}
 
-		topics = append(topics, topic.Key)
+		topics = append(topics, topic.Name())
 		ids = append(ids, v)
 	}
 

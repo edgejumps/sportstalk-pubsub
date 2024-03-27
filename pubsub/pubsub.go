@@ -14,7 +14,7 @@ type pubSubImpl struct {
 
 	eventChan chan Event
 
-	topics map[string]TargetTopic
+	topics map[string]Topic
 
 	workers []Worker
 
@@ -25,7 +25,7 @@ func NewPubSub(c *redis.Client) UnifiedPubSub {
 	return &pubSubImpl{
 		client:    c,
 		eventChan: make(chan Event),
-		topics:    make(map[string]TargetTopic),
+		topics:    make(map[string]Topic),
 		workers:   make([]Worker, 0),
 		mu:        &sync.Mutex{},
 	}
@@ -60,7 +60,7 @@ func (ps *pubSubImpl) Publish(context context.Context, event Event) error {
 	return nil
 }
 
-func (ps *pubSubImpl) Subscribe(topics ...TargetTopic) error {
+func (ps *pubSubImpl) Subscribe(topics ...Topic) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -68,11 +68,13 @@ func (ps *pubSubImpl) Subscribe(topics ...TargetTopic) error {
 
 	for _, topic := range topics {
 
-		if _, ok := ps.topics[topic.Key]; !ok {
-			newTopics = append(newTopics, topic.Key)
+		name := topic.Name()
+
+		if _, ok := ps.topics[name]; !ok {
+			newTopics = append(newTopics, name)
 		}
 
-		ps.topics[topic.Key] = topic
+		ps.topics[name] = topic
 	}
 
 	if len(newTopics) == 0 {
@@ -93,14 +95,14 @@ func (ps *pubSubImpl) Errors() <-chan error {
 	return nil
 }
 
-func (ps *pubSubImpl) Topics() []TargetTopic {
+func (ps *pubSubImpl) Topics() []string {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	topics := make([]TargetTopic, 0)
+	topics := make([]string, 0)
 
 	for _, topic := range ps.topics {
-		topics = append(topics, topic)
+		topics = append(topics, topic.Name())
 	}
 
 	return topics

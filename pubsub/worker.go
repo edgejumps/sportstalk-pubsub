@@ -102,8 +102,6 @@ func (w *streamWorkerImpl) Run(topics []string, receiver chan<- Event) error {
 		Offsets:   make(map[string]string),
 	}
 
-	fmt.Printf("Starting %v with topics: %v\n", w, topics)
-
 	go func() {
 		defer func() {
 

@@ -38,7 +38,7 @@ type UnifiedPubSub interface {
 
 	// Subscribe subscribes to given topics.
 	// The receiver can get all incoming events from the Events() channel.
-	Subscribe(topics ...TargetTopic) error
+	Subscribe(topics ...Topic) error
 
 	// Events returns a channel that receives all incoming events.
 	// As long as the internal worker is running, the channel will keep receiving events.
@@ -49,18 +49,7 @@ type UnifiedPubSub interface {
 	// It is typically designed for Kafka-based pub/sub.
 	Errors() <-chan error
 
-	Topics() []TargetTopic
+	Topics() []string
 
 	Stop() error
-}
-
-type TargetTopic struct {
-	// Key is the channel name for pub/sub,
-	// or the stream name for streams.
-	Key string
-
-	// ID is the last message ID to start reading from.
-	// If empty, it will start reading from the beginning.
-	// Only used for streams.
-	ID string
 }

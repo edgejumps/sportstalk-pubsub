@@ -12,7 +12,7 @@ func (ps *kafkaPubSub) Publish(ctx context.Context, event Event) error {
 	return nil
 }
 
-func (ps *kafkaPubSub) Subscribe(...TargetTopic) error {
+func (ps *kafkaPubSub) Subscribe(...Topic) error {
 	return nil
 }
 
@@ -28,6 +28,6 @@ func (ps *kafkaPubSub) Stop() error {
 	return nil
 }
 
-func (ps *kafkaPubSub) Topics() []TargetTopic {
+func (ps *kafkaPubSub) Topics() []string {
 	return nil
 }

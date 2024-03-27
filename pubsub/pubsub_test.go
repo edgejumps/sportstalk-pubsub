@@ -41,9 +41,7 @@ func TestRedisStream(t *testing.T) {
 		t.Errorf("Error publishing message: %v", err)
 	}
 
-	err = ps.Subscribe(TargetTopic{
-		Key: "data-case-test",
-	})
+	err = ps.Subscribe(NewRedisTopic("data-case-test"))
 
 	if err != nil {
 		t.Errorf("Error subscribing: %v", err)
@@ -91,9 +89,7 @@ func TestRedisPubSub(t *testing.T) {
 
 		defer wg.Done()
 
-		err := ps.Subscribe(TargetTopic{
-			Key: "pubsub-key",
-		})
+		err := ps.Subscribe(NewRedisTopic("pubsub-key"))
 
 		if err != nil {
 			t.Errorf("Error subscribing: %v", err)
@@ -155,17 +151,13 @@ func TestStreamPubSub_MultipleTopics(t *testing.T) {
 		t.Errorf("Error publishing message: %v", err)
 	}
 
-	err = ps.Subscribe(TargetTopic{
-		Key: "data-case-test-2",
-	})
+	err = ps.Subscribe(NewRedisTopic("data-case-test-2"))
 
 	if err != nil {
 		t.Errorf("Error subscribing: %v", err)
 	}
 
-	err = ps.Subscribe(TargetTopic{
-		Key: "data-case-test",
-	})
+	err = ps.Subscribe(NewRedisTopic("data-case-test"))
 
 	if err != nil {
 		t.Errorf("Error subscribing: %v", err)

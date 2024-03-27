@@ -12,6 +12,13 @@ type Event interface {
 	Data() (EventData, error)
 }
 
+// EventID represents the identifier of an event.
+// It contains the entry ID and the topic.
+// EntryID is optional and can be empty.
+//
+// For Redis PubSub, EntryID is ignored;
+// For Kafka, EntryID is used as the message key;
+// For Redis Stream, EntryID is used as the stream entry ID (auto-generated if not provided).
 type EventID struct {
 	EntryID string
 	Topic   string
