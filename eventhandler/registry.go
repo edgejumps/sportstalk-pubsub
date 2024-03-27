@@ -1,4 +1,4 @@
-package registry
+package eventhandler
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ var (
 	ErrNoAvailableEventDataBuilder = errors.New("no available event data builder")
 )
 
-type EventHandlerRegistry interface {
+type Registry interface {
 	Register(handler EventHandler) error
 	Unregister(action string) error
 	Route(event pubsub.Event) error
@@ -25,7 +25,7 @@ type registry struct {
 	handlers cmap.ConcurrentMap[string, EventHandler]
 }
 
-func NewRegistry() EventHandlerRegistry {
+func NewRegistry() Registry {
 	return &registry{
 		handlers: cmap.New[EventHandler](),
 	}

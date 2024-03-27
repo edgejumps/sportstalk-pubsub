@@ -1,4 +1,4 @@
-package registry
+package eventhandler
 
 import "github.com/edgejumps/sportstalk-pubsub/pubsub"
 
