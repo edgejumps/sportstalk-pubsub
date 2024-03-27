@@ -51,5 +51,5 @@ type UnifiedPubSub interface {
 
 	Topics() []string
 
-	Stop() error
+	Stop() (SyncPoint, error)
 }

@@ -27,7 +27,7 @@ func init() {
 }
 
 func TestRedisStream(t *testing.T) {
-	ps := NewPubSubStream(rdb, "")
+	ps := WithStream(rdb)
 
 	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
 
@@ -41,7 +41,7 @@ func TestRedisStream(t *testing.T) {
 		t.Errorf("Error publishing message: %v", err)
 	}
 
-	err = ps.Subscribe(NewRedisTopic("data-case-test"))
+	err = ps.Subscribe(NewTopic("data-case-test", ""))
 
 	if err != nil {
 		t.Errorf("Error subscribing: %v", err)
@@ -79,7 +79,7 @@ func TestRedisStream(t *testing.T) {
 }
 
 func TestRedisPubSub(t *testing.T) {
-	ps := NewPubSub(rdb)
+	ps := New(rdb)
 
 	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
 	wg := &sync.WaitGroup{}
@@ -89,7 +89,7 @@ func TestRedisPubSub(t *testing.T) {
 
 		defer wg.Done()
 
-		err := ps.Subscribe(NewRedisTopic("pubsub-key"))
+		err := ps.Subscribe(NewTopic("pubsub-key", ""))
 
 		if err != nil {
 			t.Errorf("Error subscribing: %v", err)
@@ -137,7 +137,7 @@ func TestRedisPubSub(t *testing.T) {
 }
 
 func TestStreamPubSub_MultipleTopics(t *testing.T) {
-	ps := NewPubSubStream(rdb, "")
+	ps := WithStream(rdb)
 
 	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
 
@@ -151,13 +151,13 @@ func TestStreamPubSub_MultipleTopics(t *testing.T) {
 		t.Errorf("Error publishing message: %v", err)
 	}
 
-	err = ps.Subscribe(NewRedisTopic("data-case-test-2"))
+	err = ps.Subscribe(NewTopic("data-case-test-2", ""))
 
 	if err != nil {
 		t.Errorf("Error subscribing: %v", err)
 	}
 
-	err = ps.Subscribe(NewRedisTopic("data-case-test"))
+	err = ps.Subscribe(NewTopic("data-case-test", ""))
 
 	if err != nil {
 		t.Errorf("Error subscribing: %v", err)

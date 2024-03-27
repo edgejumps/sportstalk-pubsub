@@ -5,16 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
-	"time"
 )
 
 var (
 	ErrWorkerAlreadyStarted = errors.New("worker already started")
 )
 
+// Worker is an interface that defines the behavior of a worker that consumes messages from a topic.
+// For Redis Stream worker, it will normalize the topic's offset to the latest message ID if not set.
+// For Redis PubSub worker, it will subscribe to the topic directly without caring the offset.
+// For Kafka worker, it will subscribe to the topic with the offset (groupID) provided.
 type Worker interface {
-	Run(topics []string, receiver chan<- Event) error
-	Stop() SyncPoint
+	Run(topics []Topic, receiver chan<- Event) error
+	Stop()
 }
 
 type workerImpl struct {
@@ -22,6 +25,8 @@ type workerImpl struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	rpb *redis.PubSub
 }
 
 func NewWorker(c *redis.Client) Worker {
@@ -34,14 +39,27 @@ func NewWorker(c *redis.Client) Worker {
 	}
 }
 
-func (w *workerImpl) Run(topics []string, receiver chan<- Event) error {
-	sub := w.client.Subscribe(w.ctx, topics...)
+func (w *workerImpl) Run(topics []Topic, receiver chan<- Event) error {
+
+	if w.rpb != nil {
+		return ErrWorkerAlreadyStarted
+	}
+
+	channels := make([]string, 0)
+
+	for _, topic := range topics {
+		channels = append(channels, topic.Name())
+	}
+
+	sub := w.client.Subscribe(w.ctx, channels...)
 
 	_, err := sub.Receive(w.ctx)
 
 	if err != nil {
 		return err
 	}
+
+	w.rpb = sub
 
 	ch := sub.Channel()
 
@@ -65,11 +83,13 @@ func (w *workerImpl) Run(topics []string, receiver chan<- Event) error {
 	return nil
 }
 
-func (w *workerImpl) Stop() SyncPoint {
-	w.cancel()
-	return SyncPoint{
-		Timestamp: time.Now().UnixMilli(),
+func (w *workerImpl) Stop() {
+	if w.rpb != nil {
+		_ = w.rpb.Close()
+		w.rpb = nil
 	}
+
+	w.cancel()
 }
 
 type streamWorkerImpl struct {
@@ -78,7 +98,7 @@ type streamWorkerImpl struct {
 	ctx      context.Context
 	canceler context.CancelFunc
 
-	point *SyncPoint
+	topics map[string]Topic
 }
 
 func NewStreamWorker(c *redis.Client) Worker {
@@ -88,18 +108,18 @@ func NewStreamWorker(c *redis.Client) Worker {
 		client:   c,
 		ctx:      ctx,
 		canceler: canceler,
+		topics:   make(map[string]Topic),
 	}
 }
 
-func (w *streamWorkerImpl) Run(topics []string, receiver chan<- Event) error {
+func (w *streamWorkerImpl) Run(topics []Topic, receiver chan<- Event) error {
 
-	if w.point != nil {
+	if len(w.topics) > 0 {
 		return ErrWorkerAlreadyStarted
 	}
 
-	w.point = &SyncPoint{
-		Timestamp: time.Now().UnixMilli(),
-		Offsets:   make(map[string]string),
+	for _, topic := range topics {
+		w.topics[topic.Name()] = topic
 	}
 
 	go func() {
@@ -111,13 +131,29 @@ func (w *streamWorkerImpl) Run(topics []string, receiver chan<- Event) error {
 		}()
 
 		for {
+
+			keys := make([]string, 0)
+			ids := make([]string, 0)
+
+			for _, topic := range w.topics {
+				keys = append(keys, topic.Name())
+
+				offset := topic.Offset()
+
+				if offset == "" {
+					offset = string(MinimumID)
+				}
+
+				ids = append(ids, offset)
+			}
+
 			select {
 			case <-w.ctx.Done():
 				fmt.Printf("Worker done: %v\n", w)
 				return
 			default:
 				streamMessages, err := w.client.XRead(w.ctx, &redis.XReadArgs{
-					Streams: topics,
+					Streams: append(keys, ids...),
 				}).Result()
 
 				if err != nil {
@@ -135,7 +171,9 @@ func (w *streamWorkerImpl) Run(topics []string, receiver chan<- Event) error {
 						receiver <- event
 					}
 
-					w.point.Offsets[stream.Stream] = stream.Messages[len(stream.Messages)-1].ID
+					if topic, ok := w.topics[stream.Stream]; ok {
+						topic.SyncOffset(stream.Messages[len(stream.Messages)-1].ID)
+					}
 				}
 			}
 		}
@@ -148,10 +186,6 @@ func (w *streamWorkerImpl) Run(topics []string, receiver chan<- Event) error {
 // Stop stops the worker from consuming messages from the topic.
 // we will not wait for the worker to stop completely, as we may re-create a new worker to replace it.
 // However, we would copy and merge its SyncPoint with pubSubStreamImpl's SyncPoint
-func (w *streamWorkerImpl) Stop() SyncPoint {
+func (w *streamWorkerImpl) Stop() {
 	w.canceler()
-	return SyncPoint{
-		Timestamp: time.Now().UnixMilli(),
-		Offsets:   w.point.Offsets,
-	}
 }

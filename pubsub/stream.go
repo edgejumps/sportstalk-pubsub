@@ -6,11 +6,22 @@ import (
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"sync"
+	"time"
 )
 
 var (
 	ErrNoEntryID = errors.New("no entry id")
 )
+
+func WithStream(c *redis.Client) UnifiedPubSub {
+
+	return &pubSubStreamImpl{
+		client:    c,
+		eventChan: make(chan Event),
+		topics:    make(map[string]Topic),
+		mu:        &sync.Mutex{},
+	}
+}
 
 type pubSubStreamImpl struct {
 	client *redis.Client
@@ -19,32 +30,9 @@ type pubSubStreamImpl struct {
 
 	topics map[string]Topic
 
-	mu    *sync.Mutex
-	point *SyncPoint
-
-	pointPath string
+	mu *sync.Mutex
 
 	worker Worker
-}
-
-func NewPubSubStream(c *redis.Client, pointPath string) UnifiedPubSub {
-
-	point, err := LoadSyncPoint(pointPath)
-
-	if err != nil {
-		point = &SyncPoint{
-			Offsets: make(map[string]string),
-		}
-	}
-
-	return &pubSubStreamImpl{
-		client:    c,
-		point:     point,
-		pointPath: pointPath,
-		eventChan: make(chan Event),
-		topics:    make(map[string]Topic),
-		mu:        &sync.Mutex{},
-	}
 }
 
 // Publish publishes a message to a topic
@@ -94,26 +82,21 @@ func (ps *pubSubStreamImpl) Subscribe(topics ...Topic) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	if ps.worker != nil {
-		oldWorker := ps.worker
-		ps.point.Merge(oldWorker.Stop())
-		ps.worker = nil
+	updatedTopics := ps.updateTopics(topics)
+
+	if updatedTopics == nil {
+		return nil
 	}
 
-	for _, topic := range topics {
-
-		name := topic.Name()
-		ps.topics[name] = topic
-
-		if _, ok := ps.point.Offsets[name]; !ok {
-			ps.point.Offsets[name] = topic.Offset()
-		}
+	if ps.worker != nil {
+		oldWorker := ps.worker
+		oldWorker.Stop()
+		ps.worker = nil
 	}
 
 	ps.worker = NewStreamWorker(ps.client)
 
-	return ps.worker.Run(ps.collectTopics(), ps.eventChan)
-
+	return ps.worker.Run(updatedTopics, ps.eventChan)
 }
 
 func (ps *pubSubStreamImpl) Events() <-chan Event {
@@ -137,12 +120,12 @@ func (ps *pubSubStreamImpl) Topics() []string {
 	return topics
 }
 
-func (ps *pubSubStreamImpl) Stop() error {
+func (ps *pubSubStreamImpl) Stop() (SyncPoint, error) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
 	if ps.worker == nil {
-		return nil
+		return SyncPoint{}, nil
 	}
 
 	defer func() {
@@ -152,32 +135,41 @@ func (ps *pubSubStreamImpl) Stop() error {
 
 	fmt.Printf("Stopping StreamPubSub: %v\n", ps.worker)
 
-	ps.point.Merge(ps.worker.Stop())
+	ps.worker.Stop()
 
-	if ps.pointPath == "" {
+	point := &SyncPoint{
+		Timestamp: time.Now().UnixMilli(),
+		Offsets:   make(map[string]string),
+	}
+
+	for _, topic := range ps.topics {
+		point.Offsets[topic.Name()] = topic.Offset()
+	}
+
+	return *point, nil
+}
+
+func (ps *pubSubStreamImpl) updateTopics(topics []Topic) []Topic {
+
+	topicAdded := false
+
+	for _, topic := range topics {
+
+		if _, ok := ps.topics[topic.Name()]; !ok {
+			ps.topics[topic.Name()] = topic
+			topicAdded = true
+		}
+	}
+
+	if !topicAdded {
 		return nil
 	}
 
-	return DumpSyncPoint(ps.pointPath, ps.point)
-}
-
-// collectTopics collects the topics and their last read offset.
-// it would return a slice of strings where the first half is the topics
-// and the second half is the last read offset for each topic.
-func (ps *pubSubStreamImpl) collectTopics() []string {
-	topics := make([]string, 0)
-	ids := make([]string, 0)
+	targetTopics := make([]Topic, 0)
 
 	for _, topic := range ps.topics {
-		v, ok := ps.point.Offsets[topic.Name()]
-
-		if !ok {
-			v = string(MinimumID)
-		}
-
-		topics = append(topics, topic.Name())
-		ids = append(ids, v)
+		targetTopics = append(targetTopics, topic)
 	}
 
-	return append(topics, ids...)
+	return targetTopics
 }

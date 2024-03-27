@@ -2,7 +2,7 @@ package pubsub
 
 import "context"
 
-func NewKafkaPubSub() UnifiedPubSub {
+func WithKafka() UnifiedPubSub {
 	return &kafkaPubSub{}
 }
 
@@ -24,8 +24,8 @@ func (ps *kafkaPubSub) Errors() <-chan error {
 	return nil
 }
 
-func (ps *kafkaPubSub) Stop() error {
-	return nil
+func (ps *kafkaPubSub) Stop() (SyncPoint, error) {
+	return SyncPoint{}, nil
 }
 
 func (ps *kafkaPubSub) Topics() []string {

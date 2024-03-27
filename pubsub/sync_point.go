@@ -14,10 +14,14 @@ type SyncPoint struct {
 	Offsets map[string]string `json:"offsets"`
 }
 
-func (s *SyncPoint) Merge(other SyncPoint) {
-	for k, v := range other.Offsets {
-		s.Offsets[k] = v
+func (s *SyncPoint) AsTopics() []Topic {
+	topics := make([]Topic, 0)
+
+	for topic, offset := range s.Offsets {
+		topics = append(topics, NewTopic(topic, offset))
 	}
+
+	return topics
 }
 
 func DumpSyncPoint(path string, point *SyncPoint) error {

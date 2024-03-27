@@ -6,6 +6,16 @@ import (
 	"sync"
 )
 
+func New(c *redis.Client) UnifiedPubSub {
+	return &pubSubImpl{
+		client:    c,
+		eventChan: make(chan Event),
+		topics:    make(map[string]Topic),
+		workers:   make([]Worker, 0),
+		mu:        &sync.Mutex{},
+	}
+}
+
 // Since Redis PUBSUB would not be able to persistent messages,
 // so we would create a new worker for newly added topics when calling Subscribe,
 // instead of using the same worker for all topics.
@@ -19,16 +29,6 @@ type pubSubImpl struct {
 	workers []Worker
 
 	mu *sync.Mutex
-}
-
-func NewPubSub(c *redis.Client) UnifiedPubSub {
-	return &pubSubImpl{
-		client:    c,
-		eventChan: make(chan Event),
-		topics:    make(map[string]Topic),
-		workers:   make([]Worker, 0),
-		mu:        &sync.Mutex{},
-	}
 }
 
 func (ps *pubSubImpl) Publish(context context.Context, event Event) error {
@@ -64,14 +64,14 @@ func (ps *pubSubImpl) Subscribe(topics ...Topic) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	newTopics := make([]string, 0)
+	newTopics := make([]Topic, 0)
 
 	for _, topic := range topics {
 
 		name := topic.Name()
 
 		if _, ok := ps.topics[name]; !ok {
-			newTopics = append(newTopics, name)
+			newTopics = append(newTopics, topic)
 		}
 
 		ps.topics[name] = topic
@@ -108,12 +108,12 @@ func (ps *pubSubImpl) Topics() []string {
 	return topics
 }
 
-func (ps *pubSubImpl) Stop() error {
+func (ps *pubSubImpl) Stop() (SyncPoint, error) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
 	if len(ps.workers) == 0 {
-		return nil
+		return SyncPoint{}, nil
 	}
 
 	defer func() {
@@ -125,5 +125,5 @@ func (ps *pubSubImpl) Stop() error {
 		worker.Stop()
 	}
 
-	return nil
+	return SyncPoint{}, nil
 }
