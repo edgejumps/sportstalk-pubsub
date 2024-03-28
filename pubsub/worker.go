@@ -105,9 +105,11 @@ type streamWorkerImpl struct {
 	canceler context.CancelFunc
 
 	topics map[string]Topic
+
+	lastSync int64
 }
 
-func NewStreamWorker(c *redis.Client) Worker {
+func NewStreamWorker(c *redis.Client, lastSync int64) Worker {
 	ctx, canceler := context.WithCancel(context.Background())
 
 	return &streamWorkerImpl{
@@ -115,6 +117,7 @@ func NewStreamWorker(c *redis.Client) Worker {
 		ctx:      ctx,
 		canceler: canceler,
 		topics:   make(map[string]Topic),
+		lastSync: lastSync,
 	}
 }
 
@@ -176,6 +179,12 @@ func (w *streamWorkerImpl) Run(topics []Topic, receiver chan<- Event) error {
 
 						if err != nil {
 							logger.Errorf("Error parsing incoming event payload: %v", err)
+							continue
+						}
+
+						fmt.Printf("Event timestamp: %d, lastSync: %d\n", event.Timestamp(), w.lastSync)
+
+						if event.Timestamp() <= w.lastSync {
 							continue
 						}
 

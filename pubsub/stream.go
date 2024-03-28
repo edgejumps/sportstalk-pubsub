@@ -13,13 +13,18 @@ var (
 	ErrNoEntryID = errors.New("no entry id")
 )
 
-func WithStream(c *redis.Client) UnifiedPubSub {
+// WithStream creates a new PubSub instance with Redis Stream.
+// As the redis stream always returns the last delivered message,
+// the lastSync is used to filter out the messages that are delivered before the lastSync.
+// The internal worker just drops received events created before the lastSync.
+func WithStream(c *redis.Client, lastSync int64) UnifiedPubSub {
 
 	return &pubSubStreamImpl{
 		client:    c,
 		eventChan: make(chan Event),
 		topics:    make(map[string]Topic),
 		mu:        &sync.Mutex{},
+		lastSync:  lastSync,
 	}
 }
 
@@ -33,6 +38,8 @@ type pubSubStreamImpl struct {
 	mu *sync.Mutex
 
 	worker Worker
+
+	lastSync int64
 }
 
 // Publish publishes a message to a topic
@@ -86,9 +93,10 @@ func (ps *pubSubStreamImpl) Subscribe(topics ...Topic) error {
 		oldWorker := ps.worker
 		oldWorker.Stop()
 		ps.worker = nil
+		ps.lastSync = max(ps.lastSync, time.Now().UnixMilli())
 	}
 
-	ps.worker = NewStreamWorker(ps.client)
+	ps.worker = NewStreamWorker(ps.client, ps.lastSync)
 
 	return ps.worker.Run(updatedTopics, ps.eventChan)
 }
@@ -132,7 +140,7 @@ func (ps *pubSubStreamImpl) Stop() (SyncPoint, error) {
 	ps.worker.Stop()
 
 	point := &SyncPoint{
-		Timestamp: time.Now().UnixMilli(),
+		Timestamp: max(ps.lastSync, time.Now().UnixMilli()),
 		Offsets:   make(map[string]string),
 	}
 

@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/edgejumps/sportstalk-common-utils/logger"
 	"time"
 )
@@ -249,6 +250,8 @@ func ParseIncomingEventData(data interface{}) (EventData, error) {
 	}
 
 	timestamp := ParseTimestamp(jsonMap[EventTimestampKey])
+
+	fmt.Printf("action: %s, ttl: %d, timestamp: %d, payload: %v\n", action, ttl, timestamp, payload)
 
 	return buildEventData(action, ttl, timestamp, payload)
 }

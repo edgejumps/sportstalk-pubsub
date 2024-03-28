@@ -27,7 +27,7 @@ func init() {
 }
 
 func TestRedisStream(t *testing.T) {
-	ps := WithStream(rdb)
+	ps := WithStream(rdb, 0)
 
 	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
 
@@ -134,7 +134,7 @@ func TestRedisPubSub(t *testing.T) {
 }
 
 func TestStreamPubSub_MultipleTopics(t *testing.T) {
-	ps := WithStream(rdb)
+	ps := WithStream(rdb, 0)
 
 	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
 

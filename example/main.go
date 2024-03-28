@@ -86,8 +86,6 @@ func testRedisPubSub(rdb *redis.Client, s <-chan struct{}) {
 func testRedisStream(rdb *redis.Client, s <-chan struct{}) {
 	path := "./test.json"
 
-	ps := pubsub.WithStream(rdb)
-
 	point, err := pubsub.LoadSyncPoint(path)
 
 	if err != nil {
@@ -97,6 +95,8 @@ func testRedisStream(rdb *redis.Client, s <-chan struct{}) {
 			},
 		}
 	}
+
+	ps := pubsub.WithStream(rdb, point.Timestamp)
 
 	topics := point.AsTopics()
 
@@ -126,6 +126,20 @@ func testRedisStream(rdb *redis.Client, s <-chan struct{}) {
 			fmt.Printf("Error subscribing to topic [%s]: %v\n", "stream-test-2", err)
 		}
 	}()
+
+	event, err := pubsub.NewOutgoingEvent(&pubsub.EventID{
+		Topic: "stream-test",
+	}, "test", 0, nil)
+
+	if err != nil {
+		fmt.Printf("Error creating new event: %v", err)
+	} else {
+		err = ps.Publish(context.Background(), event)
+
+		if err != nil {
+			fmt.Printf("Error publishing message: %v", err)
+		}
+	}
 
 	<-s
 

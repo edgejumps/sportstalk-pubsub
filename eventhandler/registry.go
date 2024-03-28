@@ -10,6 +10,7 @@ var (
 	ErrHandlerRegistered           = errors.New("handler already registered")
 	ErrHandlerNotFound             = errors.New("handler not found")
 	ErrNoAvailableEventDataBuilder = errors.New("no available event data builder")
+	ErrUnmatchedAction             = errors.New("unmatched action")
 )
 
 type Registry interface {
