@@ -1,15 +1,15 @@
 package pubsub
 
-// Event represents a message that is sent to/from a topic.
-// It contains an ID and a payload.
+// Event represents an event that is sent to/from a topic.
+// UnifiedPubSub would drop the received data if it cannot be parsed as Event via NewIncomingEvent.
+// Users should ensure the data can ben converted to Event via NewOutgoingEvent when publishing.
+// Through this way, we can guarantee consumers can always receive and process events conforming to the expected format.
 type Event interface {
 	// ID returns the identifier of the event.
 	// including the topic (where the event is sent to/from) and the entry ID if available.
 	ID() EventID
 
-	// Data returns the payload of the event.
-	// It returns an error if the payload format is unsupported/invalid.
-	Data() (EventData, error)
+	EventData
 }
 
 // EventID represents the identifier of an event.
@@ -24,52 +24,48 @@ type EventID struct {
 	Topic   string
 }
 
-type incomingEvent struct {
-	id      *EventID
-	payload interface{}
-}
-
-func (e *incomingEvent) ID() EventID {
-	return *e.id
-}
-
-func (e *incomingEvent) Data() (EventData, error) {
-	return ParseIncomingEventData(e.payload)
-}
-
-// NewIncomingEvent creates a new incoming event with the given ID and payload.
-// It will build EventData via ParseIncomingEventData.
-func NewIncomingEvent(id *EventID, payload interface{}) Event {
-	return &incomingEvent{
-		id:      id,
-		payload: payload,
-	}
-}
-
-type outgoingEvent struct {
+type eventImpl struct {
 	id *EventID
-
-	ttl     int
-	action  string
-	payload interface{}
+	EventData
 }
 
-func (e *outgoingEvent) ID() EventID {
+func (e *eventImpl) ID() EventID {
 	return *e.id
 }
 
-func (e *outgoingEvent) Data() (EventData, error) {
-	return NewEventData(e.action, e.ttl, e.payload)
+// NewIncomingEvent parses the given payload and creates a new incoming event with the given ID.
+// The given data must conform to the expected format:
+// - []byte -> unmarshal to map[string]interface{}
+// - string -> []byte(string) -> unmarshal to map[string]interface{}
+// - map[string]interface{} -> must have EventActionKey, and optional EventTTLKey, EventPayloadKey, EventTimestampKey
+func NewIncomingEvent(id *EventID, data interface{}) (Event, error) {
+	parsed, err := ParseIncomingEventData(data)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &eventImpl{
+		id:        id,
+		EventData: parsed,
+	}, nil
 }
 
 // NewOutgoingEvent creates a new outgoing event with the given ID, action, TTL, and payload.
-// It will build EventData via NewEventData.
-// The given payload must be serializable, like map[string]interface{}, []byte, string, or custom struct that can be marshaled into bytes
-func NewOutgoingEvent(id *EventID, action string, ttl int, payload interface{}) Event {
-	return &outgoingEvent{
-		id:      id,
-		action:  action,
-		ttl:     ttl,
-		payload: payload,
+// The payload eventually would be converted into string for Redis compatibility:
+// - struct/map -> json.Marshal -> []byte -> string
+// - []byte -> string
+// - string -> string
+func NewOutgoingEvent(id *EventID, action string, ttl int, payload interface{}) (Event, error) {
+
+	data, err := NewEventData(action, ttl, payload)
+
+	if err != nil {
+		return nil, err
 	}
+
+	return &eventImpl{
+		id:        id,
+		EventData: data,
+	}, nil
 }

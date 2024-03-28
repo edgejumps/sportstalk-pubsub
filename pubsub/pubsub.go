@@ -33,15 +33,9 @@ type pubSubImpl struct {
 
 func (ps *pubSubImpl) Publish(context context.Context, event Event) error {
 
-	data, err := event.Data()
-
-	if err != nil {
-		return err
-	}
-
 	value := ""
 
-	err = data.NormalizeInto(&value)
+	err := event.NormalizeInto(&value)
 
 	if err != nil {
 		return err

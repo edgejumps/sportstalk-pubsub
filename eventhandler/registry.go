@@ -52,19 +52,14 @@ func (r *registry) Unregister(action string) error {
 }
 
 func (r *registry) Route(event pubsub.Event) error {
-	data, err := event.Data()
 
-	if err != nil {
-		return err
-	}
-
-	h, ok := r.handlers.Get(data.Action())
+	h, ok := r.handlers.Get(event.Action())
 
 	if !ok {
 		return ErrHandlerNotFound
 	}
 
-	return h.Handle(data)
+	return h.Handle(event)
 }
 
 func (r *registry) Has(action string) bool {

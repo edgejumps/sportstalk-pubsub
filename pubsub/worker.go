@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/edgejumps/sportstalk-common-utils/logger"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -70,9 +71,14 @@ func (w *workerImpl) Run(topics []Topic, receiver chan<- Event) error {
 			case <-w.ctx.Done():
 				return
 			case msg := <-ch:
-				event := NewIncomingEvent(&EventID{
+				event, err := NewIncomingEvent(&EventID{
 					Topic: msg.Channel,
 				}, msg.Payload)
+
+				if err != nil {
+					logger.Errorf("Error parsing incoming event payload: %v", err)
+					continue
+				}
 
 				receiver <- event
 			}
@@ -163,10 +169,15 @@ func (w *streamWorkerImpl) Run(topics []Topic, receiver chan<- Event) error {
 
 				for _, stream := range streamMessages {
 					for _, msg := range stream.Messages {
-						event := NewIncomingEvent(&EventID{
+						event, err := NewIncomingEvent(&EventID{
 							Topic:   stream.Stream,
 							EntryID: msg.ID,
 						}, msg.Values)
+
+						if err != nil {
+							logger.Errorf("Error parsing incoming event payload: %v", err)
+							continue
+						}
 
 						receiver <- event
 					}

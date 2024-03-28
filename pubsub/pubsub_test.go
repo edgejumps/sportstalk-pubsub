@@ -31,11 +31,15 @@ func TestRedisStream(t *testing.T) {
 
 	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
 
-	event := NewOutgoingEvent(&EventID{
+	event, err := NewOutgoingEvent(&EventID{
 		Topic: "data-case-test",
 	}, action, 0, customStruct)
 
-	err := ps.Publish(context.Background(), event)
+	if err != nil {
+		t.Errorf("Error creating new event: %v", err)
+	}
+
+	err = ps.Publish(context.Background(), event)
 
 	if err != nil {
 		t.Errorf("Error publishing message: %v", err)
@@ -49,17 +53,11 @@ func TestRedisStream(t *testing.T) {
 
 	for e := range ps.Events() {
 
-		data, err := e.Data()
-
-		if err != nil {
-			continue
-		}
-
-		if data.Action() == action {
+		if e.Action() == action {
 
 			s := &CustomStruct{}
 
-			err := data.UnmarshalPayload(s)
+			err := e.UnmarshalPayload(s)
 
 			if err != nil {
 				t.Errorf("Error deserialize EventData: %v", err)
@@ -96,16 +94,11 @@ func TestRedisPubSub(t *testing.T) {
 		}
 
 		for e := range ps.Events() {
-			data, err := e.Data()
 
-			if err != nil {
-				continue
-			}
-
-			if data.Action() == action {
+			if e.Action() == action {
 				s := &CustomStruct{}
 
-				err := data.UnmarshalPayload(s)
+				err := e.UnmarshalPayload(s)
 
 				if err != nil {
 					t.Errorf("Error deserialize EventData: %v", err)
@@ -123,11 +116,15 @@ func TestRedisPubSub(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	msg := NewOutgoingEvent(&EventID{
+	event, err := NewOutgoingEvent(&EventID{
 		Topic: "pubsub-key",
 	}, action, 0, customStruct)
 
-	err := ps.Publish(context.Background(), msg)
+	if err != nil {
+		t.Errorf("Error creating new event: %v", err)
+	}
+
+	err = ps.Publish(context.Background(), event)
 
 	if err != nil {
 		t.Errorf("Error publishing message: %v", err)
@@ -141,11 +138,15 @@ func TestStreamPubSub_MultipleTopics(t *testing.T) {
 
 	action := fmt.Sprintf("/custom-struct-%d", rand.Intn(100))
 
-	event := NewOutgoingEvent(&EventID{
+	event, err := NewOutgoingEvent(&EventID{
 		Topic: "data-case-test",
 	}, action, 0, customStruct)
 
-	err := ps.Publish(context.Background(), event)
+	if err != nil {
+		t.Errorf("Error creating new event: %v", err)
+	}
+
+	err = ps.Publish(context.Background(), event)
 
 	if err != nil {
 		t.Errorf("Error publishing message: %v", err)
@@ -165,19 +166,13 @@ func TestStreamPubSub_MultipleTopics(t *testing.T) {
 
 	for e := range ps.Events() {
 
-		data, err := e.Data()
-
-		if err != nil {
-			continue
-		}
-
 		fmt.Printf("Received event: %v\n", e.ID().Topic)
 
-		if data.Action() == action {
+		if e.Action() == action {
 
 			s := &CustomStruct{}
 
-			err := data.UnmarshalPayload(s)
+			err := e.UnmarshalPayload(s)
 
 			if err != nil {
 				t.Errorf("Error deserialize EventData: %v", err)

@@ -179,31 +179,29 @@ func TestNewEventData_CustomString(t *testing.T) {
 
 func TestOutgoingEvent_CustomStruct(t *testing.T) {
 
-	event := NewOutgoingEvent(&EventID{
+	event, err := NewOutgoingEvent(&EventID{
 		Topic: "stream-key",
 	}, "custom", 1, customStruct)
+
+	if err != nil {
+		t.Errorf("Error creating outgoing event: %v", err)
+	}
 
 	if event.ID().EntryID != "" {
 		t.Errorf("Expected entry ID to be empty, got '%s'", event.ID().EntryID)
 	}
 
-	data, err := event.Data()
-
-	if err != nil {
-		t.Errorf("Error marshaling value from message: %v", err)
+	if event.Action() != "/custom" {
+		t.Errorf("Expected action to be 'custom', got '%s'", event.Action())
 	}
 
-	if data.Action() != "/custom" {
-		t.Errorf("Expected action to be 'custom', got '%s'", data.Action())
-	}
-
-	if data.TTL() != 1 {
-		t.Errorf("Expected TTL to be 0, got %d", data.TTL())
+	if event.TTL() != 1 {
+		t.Errorf("Expected TTL to be 0, got %d", event.TTL())
 	}
 
 	customStruct2 := CustomStruct{}
 
-	err = data.UnmarshalPayload(&customStruct2)
+	err = event.UnmarshalPayload(&customStruct2)
 
 	if err != nil {
 		t.Errorf("Error unmarshaling payload: %v", err)
@@ -218,31 +216,29 @@ func TestOutgoingEvent_CustomStruct(t *testing.T) {
 
 func TestOutgoingEvent_CustomBytes(t *testing.T) {
 
-	event := NewOutgoingEvent(&EventID{
+	event, err := NewOutgoingEvent(&EventID{
 		Topic: "stream-key",
 	}, "custom", 0, customSturctBytes)
+
+	if err != nil {
+		t.Errorf("Error creating outgoing event: %v", err)
+	}
 
 	if event.ID().EntryID != "" {
 		t.Errorf("Expected entry ID to be empty, got '%s'", event.ID().EntryID)
 	}
 
-	data, err := event.Data()
-
-	if err != nil {
-		t.Errorf("Error marshaling value from message: %v", err)
+	if event.Action() != "/custom" {
+		t.Errorf("Expected action to be 'custom', got '%s'", event.Action())
 	}
 
-	if data.Action() != "/custom" {
-		t.Errorf("Expected action to be 'custom', got '%s'", data.Action())
-	}
-
-	if data.TTL() != 0 {
-		t.Errorf("Expected TTL to be 0, got %d", data.TTL())
+	if event.TTL() != 0 {
+		t.Errorf("Expected TTL to be 0, got %d", event.TTL())
 	}
 
 	jsonData := make(map[string]interface{})
 
-	err = data.UnmarshalPayload(&jsonData)
+	err = event.UnmarshalPayload(&jsonData)
 
 	if err != nil {
 		t.Errorf("Error unmarshaling data: %v", err)
@@ -262,28 +258,26 @@ func TestIncomingEvent_CustomBytes(t *testing.T) {
 		"payload": customSturctBytes,
 	}
 
-	event := NewIncomingEvent(&EventID{
+	event, err := NewIncomingEvent(&EventID{
 		Topic:   "stream-key",
 		EntryID: "1",
 	}, jsonMap)
 
-	data, err := event.Data()
-
 	if err != nil {
-		t.Errorf("Error marshaling value from payload: %v", err)
+		t.Errorf("Error creating incoming event: %v", err)
 	}
 
-	if data.Action() != "/custom" {
-		t.Errorf("Expected action to be 'custom', got '%s'", data.Action())
+	if event.Action() != "/custom" {
+		t.Errorf("Expected action to be 'custom', got '%s'", event.Action())
 	}
 
-	if data.TTL() != 1 {
-		t.Errorf("Expected TTL to be 1, got %d", data.TTL())
+	if event.TTL() != 1 {
+		t.Errorf("Expected TTL to be 1, got %d", event.TTL())
 	}
 
 	customStruct := CustomStruct{}
 
-	err = data.UnmarshalPayload(&customStruct)
+	err = event.UnmarshalPayload(&customStruct)
 
 	if err != nil {
 		t.Errorf("Error unmarshaling payload: %v", err)
@@ -303,28 +297,26 @@ func TestIncomingEvent_CustomString(t *testing.T) {
 		"payload": customStructString,
 	}
 
-	event := NewIncomingEvent(&EventID{
+	event, err := NewIncomingEvent(&EventID{
 		Topic:   "stream-key",
 		EntryID: "1",
 	}, jsonMap)
 
-	data, err := event.Data()
-
 	if err != nil {
-		t.Errorf("Error marshaling value from payload: %v", err)
+		t.Errorf("Error creating incoming event: %v", err)
 	}
 
-	if data.Action() != "/custom" {
-		t.Errorf("Expected action to be 'custom', got '%s'", data.Action())
+	if event.Action() != "/custom" {
+		t.Errorf("Expected action to be 'custom', got '%s'", event.Action())
 	}
 
-	if data.TTL() != 1 {
-		t.Errorf("Expected TTL to be 1, got %d", data.TTL())
+	if event.TTL() != 1 {
+		t.Errorf("Expected TTL to be 1, got %d", event.TTL())
 	}
 
 	customStruct := CustomStruct{}
 
-	err = data.UnmarshalPayload(&customStruct)
+	err = event.UnmarshalPayload(&customStruct)
 
 	if err != nil {
 		t.Errorf("Error unmarshaling payload: %v", err)

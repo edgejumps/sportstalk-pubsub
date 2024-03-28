@@ -199,18 +199,19 @@ func (e *stringEventData) RawPayload() interface{} {
 }
 
 // NewEventData creates a new event data with the given action, TTL, and payload.
-// It returns an error if the payload format is unsupported/invalid.
-// The payload can be of type map[string]interface{}, []byte, string, or custom struct.
-// It only supports the custom struct if it can be marshaled into JSON;
-// otherwise, it will return an error.
+// The payload eventually would be converted into string for Redis compatibility:
+// - struct/map -> json.Marshal -> []byte -> string
+// - []byte -> string
+// - string -> string
 func NewEventData(action string, ttl int, payload interface{}) (EventData, error) {
 	return buildEventData(action, ttl, time.Now().UnixMilli(), payload)
 }
 
 // ParseIncomingEventData parses the incoming data into an EventData.
-// It returns an error if the data format is unsupported/invalid.
-// The data can be of type map[string]interface{}, []byte, or string.
-// Typically, it is used for parsing the incoming data and then processing it by EventHandler.
+// The given data must conform to the expected format:
+// - []byte -> unmarshal to map[string]interface{}
+// - string -> []byte(string) -> unmarshal to map[string]interface{}
+// - map[string]interface{} -> must have EventActionKey, and optional EventTTLKey, EventPayloadKey, EventTimestampKey
 func ParseIncomingEventData(data interface{}) (EventData, error) {
 
 	jsonMap := make(map[string]interface{})

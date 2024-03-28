@@ -38,12 +38,6 @@ type pubSubStreamImpl struct {
 // Publish publishes a message to a topic
 func (ps *pubSubStreamImpl) Publish(context context.Context, event Event) error {
 
-	data, err := event.Data()
-
-	if err != nil {
-		return err
-	}
-
 	id := event.ID()
 
 	if id.EntryID == "" {
@@ -52,7 +46,7 @@ func (ps *pubSubStreamImpl) Publish(context context.Context, event Event) error 
 
 	jsonData := make(map[string]interface{})
 
-	err = data.NormalizeInto(&jsonData)
+	err := event.NormalizeInto(&jsonData)
 
 	if err != nil {
 		return err

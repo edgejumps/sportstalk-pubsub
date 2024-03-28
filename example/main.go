@@ -36,7 +36,7 @@ func main() {
 		s <- struct{}{}
 	}()
 
-	testRedisPubSub(rdb, s)
+	testRedisStream(rdb, s)
 }
 
 // No need to care about the SyncPoint after stopping a Redis PubSub,
@@ -65,17 +65,11 @@ func testRedisPubSub(rdb *redis.Client, s <-chan struct{}) {
 		events := ps.Events()
 
 		for event := range events {
-			data, err := event.Data()
-
-			if err != nil {
-				fmt.Printf("Error getting data: %v\n", err)
-				continue
-			}
 
 			fmt.Printf("---------")
 			fmt.Printf("ID: %s\n", event.ID())
-			fmt.Printf("Action: %+v\n", data.Action())
-			fmt.Printf("Data: %+v\n", data.RawPayload())
+			fmt.Printf("Action: %+v\n", event.Action())
+			fmt.Printf("Data: %+v\n", event.RawPayload())
 		}
 	}()
 
@@ -116,17 +110,11 @@ func testRedisStream(rdb *redis.Client, s <-chan struct{}) {
 		events := ps.Events()
 
 		for event := range events {
-			data, err := event.Data()
-
-			if err != nil {
-				fmt.Printf("Error getting data: %v\n", err)
-				continue
-			}
 
 			fmt.Printf("---------")
 			fmt.Printf("ID: %s\n", event.ID())
-			fmt.Printf("Action: %+v\n", data.Action())
-			fmt.Printf("Data: %+v\n", data.RawPayload())
+			fmt.Printf("Action: %+v\n", event.Action())
+			fmt.Printf("Data: %+v\n", event.RawPayload())
 		}
 	}()
 

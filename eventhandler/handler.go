@@ -7,7 +7,7 @@ import "github.com/edgejumps/sportstalk-pubsub/pubsub"
 // Please ensure the Action is normalized, e.g., /action/path.
 type EventHandler interface {
 	Action() string
-	Handle(data pubsub.EventData) error
+	Handle(event pubsub.Event) error
 }
 
 type EventDataBuilder interface {

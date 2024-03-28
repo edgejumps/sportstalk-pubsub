@@ -13,7 +13,7 @@ func (m *mockHandler) Action() string {
 	return pubsub.NormalizeActionPath(m.action)
 }
 
-func (m *mockHandler) Handle(data pubsub.EventData) error {
+func (m *mockHandler) Handle(event pubsub.Event) error {
 	return nil
 }
 
@@ -62,12 +62,16 @@ func TestRegistry_Has(t *testing.T) {
 
 func TestRegistry_Route(t *testing.T) {
 
-	event := pubsub.NewIncomingEvent(&pubsub.EventID{Topic: "mock-topic"}, map[string]interface{}{
+	event, err := pubsub.NewIncomingEvent(&pubsub.EventID{Topic: "mock-topic"}, map[string]interface{}{
 		"action": "/test",
 		"ttl":    1,
 	})
 
-	err := r.Route(event)
+	if err != nil {
+		t.Errorf("failed to create event: %v", err)
+	}
+
+	err = r.Route(event)
 
 	if err != nil {
 		t.Errorf("failed to route event: %v", err)
